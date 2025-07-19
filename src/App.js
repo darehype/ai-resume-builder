@@ -149,24 +149,36 @@ const AnalysisOutput = ({ analysis }) => {
     );
 };
 
-const InterviewQuestionsOutput = ({ questions, onGenerate, isLoading }) => {
+const InterviewPrepOutput = ({ qaPairs, onGenerate, isLoading }) => {
     return (
         <div className="bg-white p-6 rounded-lg shadow-md">
             <div className="flex justify-between items-center mb-4">
-                 <h2 className="text-xl font-semibold text-gray-800">✨ Interview Preparation</h2>
+                 <h2 className="text-xl font-semibold text-gray-800">✨ Interview Preparation Q&A</h2>
                  <button
                     onClick={onGenerate}
                     disabled={isLoading}
                     className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 transition"
                  >
-                     {isLoading ? 'Generating...' : 'Regenerate Questions'}
+                     {isLoading ? 'Generating...' : 'Regenerate Q&A'}
                  </button>
             </div>
-            {isLoading && <LoadingSpinner text="Generating questions..." />}
-            {!isLoading && questions && (
-                 <ul className="list-decimal list-inside space-y-2 text-gray-700">
-                    {questions.map((q, i) => <li key={i}>{q}</li>)}
-                </ul>
+            {isLoading && <LoadingSpinner text="Generating Q&A..." />}
+            {!isLoading && qaPairs && (
+                 <div className="space-y-4">
+                    {qaPairs.map((qa, i) => (
+                        <details key={i} className="group bg-gray-50 p-4 rounded-lg">
+                            <summary className="font-semibold text-gray-800 cursor-pointer list-none flex justify-between items-center">
+                                {qa.question}
+                                <span className="text-indigo-600 transform transition-transform duration-200 group-open:rotate-90">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                </span>
+                            </summary>
+                            <p className="text-gray-700 mt-3 pt-3 border-t border-gray-200 whitespace-pre-wrap font-sans">
+                                {qa.answer}
+                            </p>
+                        </details>
+                    ))}
+                </div>
             )}
         </div>
     );
@@ -196,8 +208,8 @@ export default function App() {
     const [personalizedCV, setPersonalizedCV] = useState('');
     const [personalizedCoverLetter, setPersonalizedCoverLetter] = useState('');
     const [analysis, setAnalysis] = useState(null);
-    const [interviewQuestions, setInterviewQuestions] = useState([]);
-
+    const [interviewQAPairs, setInterviewQAPairs] = useState([]);
+    
     const [loadingState, setLoadingState] = useState({
         isAnalyzing: false,
         isGeneratingDocs: false,
@@ -285,10 +297,10 @@ CERTIFICATIONS:
         setJobDescription(desc);
 
         const prompt = `You are an expert career coach. Analyze the provided CV against the job description. Provide a concise analysis of how well the candidate's experience aligns with the role. Identify top requirements, list strengths and gaps, and summarize the fit. Return a JSON object with keys: "strengths" (array of strings), "gaps" (array of strings), and "summary" (a string).
-
+        
         CV: --- ${originalCV} ---
         Job Description: --- ${desc} ---`;
-
+        
         const schema = {
             type: "OBJECT",
             properties: {
@@ -363,7 +375,7 @@ CERTIFICATIONS:
             const result = await callGemini(prompt, schema);
             setPersonalizedCV(result.cv);
             setPersonalizedCoverLetter(result.coverLetter);
-            setInterviewQuestions([]);
+            setInterviewQAPairs([]);
         } catch (e) {
             console.error(e);
             setError(`Document Generation Failed: ${e.message}`);
@@ -371,31 +383,44 @@ CERTIFICATIONS:
             setLoadingState(s => ({ ...s, isGeneratingDocs: false }));
         }
     }, [originalCV]);
-
+    
     const handleGenerateQuestions = useCallback(async () => {
         if (!personalizedCV || !jobDescription) return;
         setLoadingState(s => ({ ...s, isGeneratingQuestions: true }));
         setError(null);
 
-        const prompt = `You are a hiring manager. Based on the candidate's tailored CV and the job description, generate 10 insightful interview questions (a mix of behavioral, technical, and situational). Return a JSON object with one key: "questions" (an array of strings).
+        const prompt = `You are a hiring manager and interview coach. Based on the candidate's tailored CV and the job description, generate 5 to 7 insightful interview questions. For each question, provide a strong, concise sample answer based on the candidate's CV. Structure the answers using the STAR method (Situation, Task, Action, Result) where appropriate.
 
+        **Output Format:**
+        Return a JSON object with one key: "qa_pairs". The value should be an array of objects, where each object has a "question" and an "answer" key.
+        
         Tailored CV: --- ${personalizedCV} ---
         Job Description: --- ${jobDescription} ---`;
 
         const schema = {
             type: "OBJECT",
             properties: {
-                questions: { type: "ARRAY", items: { type: "STRING" } }
+                qa_pairs: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            question: { type: "STRING" },
+                            answer: { type: "STRING" }
+                        },
+                        required: ["question", "answer"]
+                    }
+                }
             },
-            required: ["questions"]
+            required: ["qa_pairs"]
         };
 
         try {
             const result = await callGemini(prompt, schema);
-            setInterviewQuestions(result.questions);
+            setInterviewQAPairs(result.qa_pairs);
         } catch (e) {
             console.error(e);
-            setError(`Question Generation Failed: ${e.message}`);
+            setError(`Q&A Generation Failed: ${e.message}`);
         } finally {
             setLoadingState(s => ({ ...s, isGeneratingQuestions: false }));
         }
@@ -410,7 +435,7 @@ CERTIFICATIONS:
                 <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                     <div className="space-y-8">
                         <InputSection onGenerate={handleGenerateDocs} onAnalyze={handleAnalyzeFit} isLoading={isLoading} />
-
+                        
                         {error && <MessageBox message={error} type="error" />}
 
                         {loadingState.isAnalyzing && <LoadingSpinner text="Analyzing fit..." />}
@@ -425,8 +450,8 @@ CERTIFICATIONS:
                         )}
 
                         {personalizedCV && !loadingState.isGeneratingDocs && (
-                             <InterviewQuestionsOutput 
-                                questions={interviewQuestions} 
+                             <InterviewPrepOutput 
+                                qaPairs={interviewQAPairs} 
                                 onGenerate={handleGenerateQuestions} 
                                 isLoading={loadingState.isGeneratingQuestions}
                             />
